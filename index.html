@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Math to LaTeX Pro (GitHub Pages)</title>
     
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            const log = document.getElementById('debug-log');
+            if (log) {
+                log.style.display = 'block';
+                log.innerHTML += `<p><strong>Error at line ${lineno}:</strong> ${message}</p>`;
+            }
+        };
+    </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -13,13 +23,13 @@
         }
     </script>
     
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
@@ -37,16 +47,22 @@
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900 dark:bg-darkbg dark:text-gray-100 transition-colors duration-300">
-    <div id="root"></div>
+    
+    <div id="debug-log" style="display: none; position: absolute; z-index: 9999; background: rgba(255,0,0,0.9); color: white; padding: 20px; width: 100%; top: 0; font-family: monospace; overflow-wrap: break-word;">
+        <h3>⚠️ System Crashed (พบข้อผิดพลาด)</h3>
+    </div>
 
-    <script type="text/babel">
+    <div id="root">
+        <div style="display: flex; justify-content: center; items-center; height: 100vh; color: white; padding-top: 20vh;">
+            <h2>Loading Application... (กำลังโหลดระบบ)</h2>
+        </div>
+    </div>
+
+    <script type="text/babel" data-type="module">
         const { useState, useEffect, useRef, useCallback } = React;
 
-        // ⚠️⚠️ เปลี่ยนตรงนี้เป็น URL ของ Backend ที่คุณนำไปฝากไว้บน Cloud (เช่น Render/Railway) ⚠️⚠️
-        // ตัวอย่าง: 'wss://my-math-backend.onrender.com/ws'
-        // แต่ถ้าจะรันทดสอบในเครื่องตัวเอง (Localhost) ให้ใช้ 'ws://localhost:8000/ws'
-        const BACKEND_WS_URL = 'wss://latexhandreader.onrender.com/ws';
-'; 
+        // เชื่อมต่อไปที่ Render ของคุณแล้วเรียบร้อย!
+        const BACKEND_WS_URL = 'wss://latexhandreader.onrender.com/ws'; 
 
         const Icons = {
             Pen: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>,
@@ -79,8 +95,12 @@
             const timeoutRef = useRef(null);
 
             useEffect(() => {
-                initCanvas();
-                setupWebSocket();
+                try {
+                    initCanvas();
+                    setupWebSocket();
+                } catch (err) {
+                    console.error("Initialization error:", err);
+                }
                 
                 const handleKeyDown = (e) => {
                     if (e.ctrlKey && e.key === 'z') { e.preventDefault(); handleUndo(); }
@@ -101,12 +121,12 @@
             };
 
             const setupWebSocket = () => {
-                wsRef.current = new WebSocket(BACKEND_WS_URL); // ใช้ค่าตัวแปรแทนแบบเก่า
+                wsRef.current = new WebSocket(BACKEND_WS_URL);
                 
                 wsRef.current.onopen = () => {
                     setConnectionStatus('connected');
                     setInterval(() => {
-                        if(wsRef.current.readyState === WebSocket.OPEN) {
+                        if(wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
                             wsRef.current.send(JSON.stringify({ type: 'ping' }));
                         }
                     }, 30000);
@@ -130,9 +150,9 @@
             };
 
             useEffect(() => {
-                if (mathRef.current && latexData.latex) {
+                if (mathRef.current && latexData.latex && window.katex) {
                     try {
-                        katex.render(latexData.latex, mathRef.current, {
+                        window.katex.render(latexData.latex, mathRef.current, {
                             throwOnError: false, displayMode: true, strict: false, trust: true
                         });
                     } catch (e) {
@@ -143,15 +163,19 @@
 
             const initCanvas = () => {
                 const canvas = canvasRef.current;
+                if (!canvas) return;
                 const ctx = canvas.getContext('2d', { willReadFrequently: true });
                 const dpr = window.devicePixelRatio || 1;
-                const rect = canvas.parentElement.getBoundingClientRect();
+                
+                // ให้วาดตามขนาดหน้าจอจริงๆ ของ Parent div
+                const parent = canvas.parentElement;
+                const rect = parent.getBoundingClientRect();
                 
                 canvas.width = rect.width * dpr;
                 canvas.height = rect.height * dpr;
                 ctx.scale(dpr, dpr);
-                canvas.style.width = `${rect.width}px`;
-                canvas.style.height = `${rect.height}px`;
+                canvas.style.width = '100%';
+                canvas.style.height = '100%';
 
                 ctx.fillStyle = 'black'; 
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -171,7 +195,7 @@
             };
 
             const startDrawing = (e) => {
-                e.preventDefault();
+                e.preventDefault(); // ป้องกันจอลื่นไหลบนมือถือ
                 setIsDrawing(true);
                 const pos = getPos(e);
                 lastPosRef.current = pos;
@@ -226,6 +250,7 @@
 
             const saveHistoryState = () => {
                 const canvas = canvasRef.current;
+                if(!canvas) return;
                 const newHistory = history.slice(0, historyStep + 1);
                 newHistory.push(canvas.toDataURL());
                 if (newHistory.length > 20) newHistory.shift(); 
@@ -336,7 +361,7 @@
                             </div>
 
                             <div className="flex-1 relative bg-gray-100 dark:bg-gray-900 p-4 overflow-hidden flex flex-col">
-                                <div className="flex-1 relative rounded-xl shadow-inner border border-gray-300 dark:border-gray-700 overflow-hidden bg-black">
+                                <div className="flex-1 relative rounded-xl shadow-inner border border-gray-300 dark:border-gray-700 overflow-hidden bg-black" style={{ touchAction: 'none' }}>
                                     <canvas ref={canvasRef} className="canvas-container absolute top-0 left-0" onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseOut={stopDrawing} onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing} />
                                     {historyStep === 0 && !isDrawing && (
                                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30">
@@ -390,8 +415,12 @@
                 </div>
             );
         }
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+
+        const rootElement = document.getElementById('root');
+        if (rootElement) {
+            const root = ReactDOM.createRoot(rootElement);
+            root.render(<App />);
+        }
     </script>
 </body>
 </html>
