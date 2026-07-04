@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Math to LaTeX Pro (GitHub Pages)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { colors: { primary: '#3b82f6', secondary: '#10b981', darkbg: '#0f172a', darkpanel: '#1e293b' } } }
+        }
+    </script>
+    
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <style>
+        body { margin: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+        .canvas-container { cursor: crosshair; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .katex { font-size: 1.5em !important; }
+        .dark .katex { color: white !important; }
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 dark:bg-darkbg dark:text-gray-100 transition-colors duration-300">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        // ⚠️⚠️ เปลี่ยนตรงนี้เป็น URL ของ Backend ที่คุณนำไปฝากไว้บน Cloud (เช่น Render/Railway) ⚠️⚠️
+        // ตัวอย่าง: 'wss://my-math-backend.onrender.com/ws'
+        // แต่ถ้าจะรันทดสอบในเครื่องตัวเอง (Localhost) ให้ใช้ 'ws://localhost:8000/ws'
+        const BACKEND_WS_URL = 'ws://localhost:8000/ws'; 
+
+        const Icons = {
+            Pen: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>,
+            Eraser: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
+            Undo: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>,
+            Redo: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" /></svg>,
+            Clear: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
+            Copy: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>,
+            Download: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>,
+            Moon: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>,
+            Sun: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>,
+            Lightning: () => <svg className="w-4 h-4 inline-block text-yellow-400 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.381z" clipRule="evenodd" /></svg>
+        };
+
+        function App() {
+            const [mode, setMode] = useState('pen');
+            const [penSize, setPenSize] = useState(4);
+            const [isDarkMode, setIsDarkMode] = useState(true);
+            const [latexData, setLatexData] = useState({ latex: '', confidence: 0, latency_ms: 0 });
+            const [connectionStatus, setConnectionStatus] = useState('connecting');
+            
+            const canvasRef = useRef(null);
+            const mathRef = useRef(null);
+            const wsRef = useRef(null);
+            const [isDrawing, setIsDrawing] = useState(false);
+            const [history, setHistory] = useState([]);
+            const [historyStep, setHistoryStep] = useState(-1);
+            
+            const lastPosRef = useRef({ x: 0, y: 0 });
+            const timeoutRef = useRef(null);
+
+            useEffect(() => {
+                initCanvas();
+                setupWebSocket();
+                
+                const handleKeyDown = (e) => {
+                    if (e.ctrlKey && e.key === 'z') { e.preventDefault(); handleUndo(); }
+                    if (e.ctrlKey && e.key === 'y') { e.preventDefault(); handleRedo(); }
+                    if (e.key === 'Delete') { e.preventDefault(); handleClear(); }
+                };
+                window.addEventListener('keydown', handleKeyDown);
+                
+                return () => {
+                    window.removeEventListener('keydown', handleKeyDown);
+                    if (wsRef.current) wsRef.current.close();
+                };
+            }, []);
+
+            const toggleDarkMode = () => {
+                setIsDarkMode(!isDarkMode);
+                document.documentElement.classList.toggle('dark');
+            };
+
+            const setupWebSocket = () => {
+                wsRef.current = new WebSocket(BACKEND_WS_URL); // ใช้ค่าตัวแปรแทนแบบเก่า
+                
+                wsRef.current.onopen = () => {
+                    setConnectionStatus('connected');
+                    setInterval(() => {
+                        if(wsRef.current.readyState === WebSocket.OPEN) {
+                            wsRef.current.send(JSON.stringify({ type: 'ping' }));
+                        }
+                    }, 30000);
+                };
+                
+                wsRef.current.onmessage = (event) => {
+                    const response = JSON.parse(event.data);
+                    if (response.type === 'result') {
+                        setLatexData({
+                            latex: response.data.latex,
+                            confidence: response.data.confidence,
+                            latency_ms: response.data.latency_ms
+                        });
+                    }
+                };
+                
+                wsRef.current.onclose = () => {
+                    setConnectionStatus('disconnected');
+                    setTimeout(setupWebSocket, 5000);
+                };
+            };
+
+            useEffect(() => {
+                if (mathRef.current && latexData.latex) {
+                    try {
+                        katex.render(latexData.latex, mathRef.current, {
+                            throwOnError: false, displayMode: true, strict: false, trust: true
+                        });
+                    } catch (e) {
+                        console.error("KaTeX Error:", e);
+                    }
+                }
+            }, [latexData.latex, isDarkMode]);
+
+            const initCanvas = () => {
+                const canvas = canvasRef.current;
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                const dpr = window.devicePixelRatio || 1;
+                const rect = canvas.parentElement.getBoundingClientRect();
+                
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+                ctx.scale(dpr, dpr);
+                canvas.style.width = `${rect.width}px`;
+                canvas.style.height = `${rect.height}px`;
+
+                ctx.fillStyle = 'black'; 
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                saveHistoryState();
+            };
+
+            const getPos = (e) => {
+                const canvas = canvasRef.current;
+                const rect = canvas.getBoundingClientRect();
+                let clientX = e.clientX;
+                let clientY = e.clientY;
+                if (e.touches && e.touches.length > 0) {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                }
+                return { x: clientX - rect.left, y: clientY - rect.top };
+            };
+
+            const startDrawing = (e) => {
+                e.preventDefault();
+                setIsDrawing(true);
+                const pos = getPos(e);
+                lastPosRef.current = pos;
+                const ctx = canvasRef.current.getContext('2d');
+                ctx.beginPath();
+                ctx.moveTo(pos.x, pos.y);
+                ctx.lineTo(pos.x, pos.y);
+                ctx.stroke();
+            };
+
+            const draw = (e) => {
+                e.preventDefault();
+                if (!isDrawing) return;
+                const pos = getPos(e);
+                const ctx = canvasRef.current.getContext('2d');
+                
+                ctx.lineWidth = mode === 'eraser' ? penSize * 10 : penSize;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.strokeStyle = mode === 'eraser' ? 'black' : 'white';
+                
+                const midPoint = {
+                    x: lastPosRef.current.x + (pos.x - lastPosRef.current.x) / 2,
+                    y: lastPosRef.current.y + (pos.y - lastPosRef.current.y) / 2
+                };
+                
+                ctx.quadraticCurveTo(lastPosRef.current.x, lastPosRef.current.y, midPoint.x, midPoint.y);
+                ctx.stroke();
+                lastPosRef.current = pos;
+            };
+
+            const stopDrawing = (e) => {
+                if (!isDrawing) return;
+                e.preventDefault();
+                setIsDrawing(false);
+                const ctx = canvasRef.current.getContext('2d');
+                ctx.lineTo(lastPosRef.current.x, lastPosRef.current.y);
+                ctx.stroke();
+                saveHistoryState();
+                triggerInference();
+            };
+
+            const triggerInference = () => {
+                if (timeoutRef.current) clearTimeout(timeoutRef.current);
+                timeoutRef.current = setTimeout(() => {
+                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                        const base64Img = canvasRef.current.toDataURL('image/png');
+                        wsRef.current.send(JSON.stringify({ image: base64Img }));
+                    }
+                }, 400);
+            };
+
+            const saveHistoryState = () => {
+                const canvas = canvasRef.current;
+                const newHistory = history.slice(0, historyStep + 1);
+                newHistory.push(canvas.toDataURL());
+                if (newHistory.length > 20) newHistory.shift(); 
+                setHistory(newHistory);
+                setHistoryStep(newHistory.length - 1);
+            };
+
+            const restoreState = (dataUrl) => {
+                const canvas = canvasRef.current;
+                const ctx = canvas.getContext('2d');
+                const img = new Image();
+                img.src = dataUrl;
+                img.onload = () => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+                };
+            };
+
+            const handleUndo = () => {
+                if (historyStep > 0) {
+                    const prevStep = historyStep - 1;
+                    setHistoryStep(prevStep);
+                    restoreState(history[prevStep]);
+                    triggerInference();
+                }
+            };
+
+            const handleRedo = () => {
+                if (historyStep < history.length - 1) {
+                    const nextStep = historyStep + 1;
+                    setHistoryStep(nextStep);
+                    restoreState(history[nextStep]);
+                    triggerInference();
+                }
+            };
+
+            const handleClear = () => {
+                const canvas = canvasRef.current;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'black';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                setLatexData({ latex: '', confidence: 0, latency_ms: 0 });
+                saveHistoryState();
+            };
+
+            const copyToClipboard = () => {
+                if(!latexData.latex) return;
+                navigator.clipboard.writeText(latexData.latex);
+                Swal.fire({
+                    title: 'Copied!', text: 'LaTeX code copied to clipboard.', icon: 'success', timer: 1500,
+                    showConfirmButton: false, background: isDarkMode ? '#1e293b' : '#ffffff', color: isDarkMode ? '#ffffff' : '#000000'
+                });
+            };
+
+            const downloadEquation = () => {
+                if(!latexData.latex) return;
+                const link = document.createElement('a');
+                link.download = `math_equation_${new Date().getTime()}.png`;
+                link.href = canvasRef.current.toDataURL();
+                link.click();
+            };
+
+            return (
+                <div className="flex flex-col h-screen w-full">
+                    <header className="h-14 flex items-center justify-between px-6 bg-white dark:bg-darkpanel border-b border-gray-200 dark:border-gray-800 shadow-sm z-10">
+                        <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold text-xl">∑</div>
+                            <h1 className="text-xl font-bold tracking-tight">Math2<span className="text-primary">LaTeX</span></h1>
+                            <div className="ml-4 flex items-center text-xs px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-800">
+                                <div className={`w-2 h-2 rounded-full mr-2 ${connectionStatus === 'connected' ? 'bg-green-500' : connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'}`}></div>
+                                {connectionStatus === 'connected' ? 'Real-time Active' : connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
+                            </div>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                            <button onClick={toggleDarkMode} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+                                {isDarkMode ? <Icons.Sun /> : <Icons.Moon />}
+                            </button>
+                        </div>
+                    </header>
+
+                    <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
+                        <div className="w-full md:w-3/5 flex flex-col border-r border-gray-200 dark:border-gray-800">
+                            <div className="p-3 bg-white dark:bg-darkpanel flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 dark:border-gray-800">
+                                <div className="flex space-x-1">
+                                    <button onClick={() => setMode('pen')} className={`flex items-center px-4 py-2 rounded-lg font-medium transition text-sm ${mode === 'pen' ? 'bg-primary text-white shadow-md' : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
+                                        <Icons.Pen /> <span className="ml-2 hidden sm:inline">Pen</span>
+                                    </button>
+                                    <button onClick={() => setMode('eraser')} className={`flex items-center px-4 py-2 rounded-lg font-medium transition text-sm ${mode === 'eraser' ? 'bg-primary text-white shadow-md' : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
+                                        <Icons.Eraser /> <span className="ml-2 hidden sm:inline">Eraser</span>
+                                    </button>
+                                </div>
+                                <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
+                                    <span>Size:</span>
+                                    <input type="range" min="1" max="10" value={penSize} onChange={(e) => setPenSize(e.target.value)} className="w-24 accent-primary" />
+                                </div>
+                                <div className="flex space-x-1">
+                                    <button onClick={handleUndo} disabled={historyStep <= 0} className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 transition">
+                                        <Icons.Undo />
+                                    </button>
+                                    <button onClick={handleRedo} disabled={historyStep >= history.length - 1} className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 transition">
+                                        <Icons.Redo />
+                                    </button>
+                                    <div className="w-px h-6 bg-gray-300 dark:bg-gray-700 mx-1 self-center"></div>
+                                    <button onClick={handleClear} className="flex items-center px-3 py-2 rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition font-medium text-sm">
+                                        <Icons.Clear /> <span className="ml-1 hidden sm:inline">Clear</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="flex-1 relative bg-gray-100 dark:bg-gray-900 p-4 overflow-hidden flex flex-col">
+                                <div className="flex-1 relative rounded-xl shadow-inner border border-gray-300 dark:border-gray-700 overflow-hidden bg-black">
+                                    <canvas ref={canvasRef} className="canvas-container absolute top-0 left-0" onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseOut={stopDrawing} onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing} />
+                                    {historyStep === 0 && !isDrawing && (
+                                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30">
+                                            <span className="text-white text-2xl font-light tracking-widest">Draw Equation Here</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="w-full md:w-2/5 flex flex-col bg-white dark:bg-darkbg">
+                            <div className="flex-1 flex flex-col p-4 border-b border-gray-200 dark:border-gray-800">
+                                <div className="flex justify-between items-center mb-3">
+                                    <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500">Live Preview</h2>
+                                    {latexData.latency_ms > 0 && <span className="text-xs font-mono text-gray-400"><Icons.Lightning /> {latexData.latency_ms}ms</span>}
+                                </div>
+                                <div className="flex-1 bg-gray-50 dark:bg-darkpanel rounded-xl border border-gray-200 dark:border-gray-700 flex items-center justify-center p-6 overflow-auto shadow-inner relative">
+                                    {latexData.latex ? <div ref={mathRef} className="fade-in"></div> : (
+                                        <div className="text-gray-400 text-sm flex flex-col items-center">Waiting for input...</div>
+                                    )}
+                                    {latexData.confidence > 0 && (
+                                        <div className="absolute bottom-3 right-3 flex items-center space-x-1">
+                                            <div className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide ${latexData.confidence > 0.9 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : latexData.confidence > 0.7 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                                                AI Confidence: {(latexData.confidence * 100).toFixed(1)}%
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="h-1/3 min-h-[250px] flex flex-col p-4 bg-gray-50 dark:bg-gray-900">
+                                <div className="flex justify-between items-center mb-3">
+                                    <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500">LaTeX Source</h2>
+                                    <div className="flex space-x-2">
+                                        <button onClick={copyToClipboard} disabled={!latexData.latex} className="flex items-center px-3 py-1.5 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-md text-xs font-medium transition disabled:opacity-50">
+                                            <Icons.Copy /> <span className="ml-1">Copy</span>
+                                        </button>
+                                        <button onClick={downloadEquation} disabled={!latexData.latex} className="flex items-center px-3 py-1.5 bg-primary hover:bg-blue-600 text-white rounded-md text-xs font-medium transition disabled:opacity-50">
+                                            <Icons.Download /> <span className="ml-1">Save</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex-1 bg-gray-900 dark:bg-[#0d1117] rounded-xl p-4 overflow-auto border border-gray-800 shadow-inner relative group">
+                                    <pre className="font-mono text-sm text-green-400 whitespace-pre-wrap break-words select-all">
+                                        {latexData.latex || '% Start writing to generate LaTeX'}
+                                    </pre>
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
